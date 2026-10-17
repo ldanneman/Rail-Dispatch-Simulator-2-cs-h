@@ -1,0 +1,151 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://rail-dispatch-simulator.local/schema/rail-scenario-v1.json",
+  "title": "Rail Dispatch Simulator scenario, schema version 1",
+  "description": "One document describes a complete, reproducible test scenario: network, shipments, disruptions and (optionally) expected results. Times are integer hours from a common start (hour 0); intervals are half-open [start, end). Cross references (unknown terminal/connection/shipment ids) cannot be expressed in JSON Schema and are additionally checked by the importer.",
+  "type": "object",
+  "required": ["network"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "rail-dispatch-scenario" },
+    "version": { "const": 1 },
+    "name": { "type": "string", "minLength": 1, "maxLength": 60 },
+    "description": { "type": "string", "maxLength": 500 },
+    "network": {
+      "type": "object",
+      "required": ["terminals", "connections"],
+      "additionalProperties": false,
+      "properties": {
+        "terminals": { "type": "array", "maxItems": 40, "items": { "$ref": "#/definitions/terminal" } },
+        "connections": { "type": "array", "maxItems": 200, "items": { "$ref": "#/definitions/connection" } }
+      }
+    },
+    "shipments": { "type": "array", "maxItems": 1000, "items": { "$ref": "#/definitions/shipment" } },
+    "disruptions": { "type": "array", "maxItems": 200, "items": { "$ref": "#/definitions/disruption" } },
+    "expected": { "$ref": "#/definitions/expected" }
+  },
+  "definitions": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,23}$" },
+    "hour": { "type": "integer", "minimum": 0, "maximum": 10000 },
+    "terminal": {
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/definitions/id" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "x": { "type": "number", "minimum": -1000, "maximum": 1000 },
+        "y": { "type": "number", "minimum": -1000, "maximum": 1000 }
+      }
+    },
+    "connection": {
+      "type": "object",
+      "required": ["id", "from", "to", "travelTime", "capacity"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/definitions/id" },
+        "from": { "$ref": "#/definitions/id" },
+        "to": { "$ref": "#/definitions/id" },
+        "travelTime": { "type": "integer", "minimum": 1, "maximum": 1000 },
+        "capacity": { "type": "integer", "minimum": 1, "maximum": 1000 },
+        "bidirectional": { "type": "boolean", "default": true }
+      }
+    },
+    "shipment": {
+      "type": "object",
+      "required": ["id", "origin", "destination", "release", "deadline", "priority"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/definitions/id" },
+        "origin": { "$ref": "#/definitions/id" },
+        "destination": { "$ref": "#/definitions/id" },
+        "release": { "$ref": "#/definitions/hour" },
+        "deadline": { "$ref": "#/definitions/hour" },
+        "priority": { "type": "integer", "minimum": 1, "maximum": 4, "description": "1 Low, 2 Standard, 3 High, 4 Critical" },
+        "cargo": { "type": "string", "minLength": 1, "maxLength": 40 }
+      }
+    },
+    "disruption": {
+      "oneOf": [
+        { "$ref": "#/definitions/closure" },
+        { "$ref": "#/definitions/travelTime" },
+        { "$ref": "#/definitions/capacityCut" },
+        { "$ref": "#/definitions/releaseDelay" }
+      ]
+    },
+    "closure": {
+      "type": "object",
+      "required": ["id", "type", "connectionId", "startHour", "endHour"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/definitions/id" },
+        "type": { "const": "closure" },
+        "connectionId": { "$ref": "#/definitions/id" },
+        "startHour": { "$ref": "#/definitions/hour" },
+        "endHour": { "type": "integer", "minimum": 1, "maximum": 10000, "description": "exclusive; must be greater than startHour" },
+        "note": { "type": "string", "minLength": 1, "maxLength": 200 }
+      }
+    },
+    "travelTime": {
+      "type": "object",
+      "required": ["id", "type", "connectionId", "startHour", "endHour", "extraHours"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/definitions/id" },
+        "type": { "const": "travel_time" },
+        "connectionId": { "$ref": "#/definitions/id" },
+        "startHour": { "$ref": "#/definitions/hour" },
+        "endHour": { "type": "integer", "minimum": 1, "maximum": 10000 },
+        "extraHours": { "type": "integer", "minimum": 1, "maximum": 1000, "description": "added to the travel time of movements DEPARTING in [startHour, endHour)" },
+        "note": { "type": "string", "minLength": 1, "maxLength": 200 }
+      }
+    },
+    "capacityCut": {
+      "type": "object",
+      "required": ["id", "type", "connectionId", "startHour", "endHour", "capacity"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/definitions/id" },
+        "type": { "const": "capacity" },
+        "connectionId": { "$ref": "#/definitions/id" },
+        "startHour": { "$ref": "#/definitions/hour" },
+        "endHour": { "type": "integer", "minimum": 1, "maximum": 10000 },
+        "capacity": { "type": "integer", "minimum": 0, "maximum": 1000, "description": "movements allowed to enter per hourly slot while the cut is active (the lower of this and the base capacity applies)" },
+        "note": { "type": "string", "minLength": 1, "maxLength": 200 }
+      }
+    },
+    "releaseDelay": {
+      "type": "object",
+      "required": ["id", "type", "shipmentId", "delayHours"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/definitions/id" },
+        "type": { "const": "release_delay" },
+        "shipmentId": { "$ref": "#/definitions/id" },
+        "delayHours": { "type": "integer", "minimum": 1, "maximum": 10000 },
+        "note": { "type": "string", "minLength": 1, "maxLength": 200 }
+      }
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "notes": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "shipments": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/definitions/id" },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "status": { "enum": ["on_time", "late", "undeliverable"] },
+              "arrival": { "type": "integer", "minimum": 0 },
+              "route": { "type": "array", "items": { "$ref": "#/definitions/id" }, "description": "connection ids in travel order" },
+              "departures": { "type": "array", "items": { "type": "integer", "minimum": 0 }, "description": "departure hour of each leg" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
